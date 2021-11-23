@@ -20,14 +20,18 @@ contract EmiTracking is OwnableUpgradeable {
 
     IERC20Upgradeable public stakeToken;
 
-    struct UserStake {
+    struct EnterRequestData {
         uint256 stakeAmount;
         uint256 stakeDate;
-        uint256 enterRequestId;
+        InStages enterStage;
     }
-
-    // wallet => userStake
-    mapping(address => UserStake) public userStakes;
+    
+    // requestId => wallet
+    mapping(uint256 => address) public requestWallet;
+    // wallet => requsetIds
+    mapping(address => uint256[]) public walletRequests;
+    // requestId => requset data array
+    mapping(uint256 => EnterRequestData) public requestIdData;
 
     /**
      * @dev events
@@ -54,7 +58,15 @@ contract EmiTracking is OwnableUpgradeable {
     function enter(uint256 amount) public {
         require(amount > 0, "incorrect amount");
         uint256 requestId = 0; // get reuqestId from berezka DAO
-        userStakes[msg.sender] = UserStake(amount, block.timestamp, requestId);
+
+        requestWallet[requestId] = msg.sender;
+        requestIdData[requestId] = EnterRequestData(
+            amount,
+            block.timestamp,
+            InStages.PENDING
+        );
+        walletRequests[msg.sender].push(requestId);
+
         stakeToken.transferFrom(msg.sender, address(this), amount);
         emit Entered(msg.sender, amount, requestId);
     }
@@ -62,7 +74,7 @@ contract EmiTracking is OwnableUpgradeable {
     /**
     Создавать запрос (request) на выход: с контрактом DeversiFi.
      */
-    function exitRequest() public {}
+    function exitRequest(uint256 requestId) public {}
 
     /**
     Возвращать фронту список всех запросов (идентификаторов) пользователя
@@ -72,7 +84,30 @@ contract EmiTracking is OwnableUpgradeable {
     /**
     Отдавать во фронт информацию о запросе по его идентификатору. Фронт получает идентификатор либо из списка (см п. 4), либо из события.
      */
-    function getEnterRequestData() public view {}
+    function getEnterRequestData(uint256 requestId)
+        public
+        view
+        returns (
+            address wallet,
+            uint256 amount,
+            InStages stage
+        )
+    {
+        wallet = requestWallet[requestId];
+        amount = requestIdData[requestId].stakeAmount;
+        stage = requestIdData[requestId].enterStage;
+    }
+
+    /**
+    Выдать список запросов на вход по кошельку
+     */
+    function getWalletEnterRequests(address wallet)
+        public
+        view
+        returns (uint256[] memory reuestIds)
+    {
+        return walletRequests[wallet];
+    }
 
     /**
     Возвращать пользователю на кошелек токены по одному из сценариев:

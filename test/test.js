@@ -3,6 +3,8 @@ const { ethers } = require("hardhat");
 const { tokens, tokensDec } = require("../utils/utils");
 
 const ENTERED_EVENT = "0x089d0daa5e8466fdfdab1113e8fdd98c06ef26711cafc429dabce354d007364e";
+const SINGLE_REQESTID = 0;
+const ONE_THOUSAND_USDT = tokensDec(1_000, 6);
 
 describe("Stake USDT tokens", function () {
   let emiTracking, usdt;
@@ -19,17 +21,24 @@ describe("Stake USDT tokens", function () {
     await emiTracking.deployed();
   });
   it("Make correct enter stake", async () => {
-    await usdt.connect(user1).approve(emiTracking.address, tokensDec(1_000, 6));
-    let resTx = await emiTracking.connect(user1).enter(tokensDec(1_000, 6));
-    //console.log("resTx", resTx);
+    await usdt.connect(user1).approve(emiTracking.address, ONE_THOUSAND_USDT);
+    let resTx = await emiTracking.connect(user1).enter(ONE_THOUSAND_USDT);
     let eEntered = (await resTx.wait()).events.filter((x) => {
-      //console.log("x", x);
       return x.topics[0] == ENTERED_EVENT;
     });
-    console.log("eEntered", eEntered[0].args[0], eEntered[0].args[1].toString());
 
     // chech wallet and amount from event "entered"
     expect(eEntered[0].args[0]).to.be.equal(user1.address);
-    expect(eEntered[0].args[1]).to.be.equal(tokensDec(1_000, 6));
+    expect(eEntered[0].args[1]).to.be.equal(ONE_THOUSAND_USDT);
+
+    // get requests by wallet
+    let requestIds = await emiTracking.getWalletEnterRequests(user1.address);
+    expect(requestIds.length).to.be.equal(1);
+    expect(requestIds[0]).to.be.equal(SINGLE_REQESTID);
+
+    // get wallet enter requestIds
+    let enterRequestData = await emiTracking.getEnterRequestData(SINGLE_REQESTID);
+    expect(enterRequestData.wallet).to.be.equal(user1.address);
+    expect(enterRequestData.amount).to.be.equal(ONE_THOUSAND_USDT);
   });
 });
