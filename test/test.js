@@ -9,10 +9,15 @@ const ONE_THOUSAND_USDT = tokensDec(1_000, 6);
 describe("Stake USDT tokens", function () {
   let emiTracking, usdt;
   beforeEach("prepare environment", async () => {
-    [UpgradeAdmin, owner, user1, user2, user3, user4, ...signers] = await ethers.getSigners();
+    [UpgradeAdmin, owner, vault, user1, user2, user3, user4, ...signers] = await ethers.getSigners();
 
     const USDT = await ethers.getContractFactory("USDT");
     usdt = await USDT.deploy();
+
+    // mock TokenRequest
+    const TOKENREQUEST = await ethers.getContractFactory("TokenRequest");
+    TokenRequest = await TOKENREQUEST.deploy();
+    await TokenRequest.initialize(vault.address, [usdt.address]);
 
     await usdt.transfer(user1.address, tokensDec(10_000, 6));
 
