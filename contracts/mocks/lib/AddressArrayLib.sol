@@ -2,7 +2,10 @@
 pragma solidity ^0.8.0;
 
 library AddressArrayLib {
-    function deleteItem(address[] storage self, address item) internal returns (bool) {
+    function deleteItem(address[] storage self, address item)
+        internal
+        returns (bool)
+    {
         uint256 length = self.length;
         for (uint256 i = 0; i < length; i++) {
             if (self[i] == item) {
@@ -19,7 +22,11 @@ library AddressArrayLib {
         return false;
     }
 
-    function contains(address[] storage self, address item) internal view returns (bool) {
+    function contains(address[] storage self, address item)
+        internal
+        view
+        returns (bool)
+    {
         for (uint256 i = 0; i < self.length; i++) {
             if (self[i] == item) {
                 return true;

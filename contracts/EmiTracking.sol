@@ -4,8 +4,14 @@ pragma solidity ^0.8.0;
 import "hardhat/console.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
+import "./ITokenRequest.sol";
 
 contract EmiTracking is OwnableUpgradeable {
+    using SafeERC20Upgradeable for IERC20Upgradeable;
+
+    ITokenRequest public tokenRequest;
+
     enum InStages {
         PENDING,
         REFUNDED,
@@ -25,7 +31,7 @@ contract EmiTracking is OwnableUpgradeable {
         uint256 stakeDate;
         InStages enterStage;
     }
-    
+
     // requestId => wallet
     mapping(uint256 => address) public requestWallet;
     // wallet => requsetIds
@@ -36,16 +42,22 @@ contract EmiTracking is OwnableUpgradeable {
     /**
      * @dev events
      */
-    event Entered(address wallet, uint256 stakeAmount, uint256 enterRequestId);
+    event Entered(
+        address wallet,
+        uint256 stakeAmount,
+        uint256 requestedAmount,
+        uint256 enterRequestId
+    );
 
-    function initialize(address owner, address inputStakeToken)
-        public
-        virtual
-        initializer
-    {
+    function initialize(
+        address _owner,
+        address _stakeToken,
+        address _tokenRequest
+    ) public virtual initializer {
         __Ownable_init();
-        transferOwnership(owner);
-        stakeToken = IERC20Upgradeable(inputStakeToken);
+        transferOwnership(_owner);
+        stakeToken = IERC20Upgradeable(_stakeToken);
+        tokenRequest = ITokenRequest(_tokenRequest);
     }
 
     /**
@@ -55,20 +67,27 @@ contract EmiTracking is OwnableUpgradeable {
 
     Получать номер запроса и сохранять его вместе с информацией о ставке в реестре, обеспечив тем самым маппинг ставки пользователя и запроса в Березку.
      */
-    function enter(uint256 amount) public {
+    function enter(uint256 amount, uint256 requestedAmount) public {
         require(amount > 0, "incorrect amount");
-        uint256 requestId = 0; // get reuqestId from berezka DAO
 
+        stakeToken.safeTransferFrom(msg.sender, address(this), amount);
+        stakeToken.safeApprove(address(tokenRequest), amount);
+        uint256 requestId = tokenRequest.createTokenRequest(
+            address(stakeToken),
+            amount,
+            requestedAmount,
+            ""
+        ); // get reuqestId from berezka DAO
+
+        walletRequests[msg.sender].push(requestId);
         requestWallet[requestId] = msg.sender;
         requestIdData[requestId] = EnterRequestData(
             amount,
             block.timestamp,
             InStages.PENDING
         );
-        walletRequests[msg.sender].push(requestId);
 
-        stakeToken.transferFrom(msg.sender, address(this), amount);
-        emit Entered(msg.sender, amount, requestId);
+        emit Entered(msg.sender, amount, requestedAmount, requestId);
     }
 
     /**
@@ -107,6 +126,33 @@ contract EmiTracking is OwnableUpgradeable {
         returns (uint256[] memory reuestIds)
     {
         return walletRequests[wallet];
+    }
+
+    /**
+     * @dev getting enter stake data (struct TokenRequestData) + status (enum Status) by request id
+     * @param id request id 
+     * @return requesterAddress requester address (always this contract)
+     * @return depositToken deposite token
+     * @return depositAmount deposite token amount
+     * @return requestAmount requested token amount
+     * @return status int representation of aragons enum Status {Pending, Refunded, Finalised}
+     */
+    function getEnterRequest(uint256 id)
+        public
+        view
+        returns (
+            address requesterAddress,
+            address depositToken,
+            uint256 depositAmount,
+            uint256 requestAmount,
+            uint256 status
+        )
+    {
+        requesterAddress = tokenRequest.tokenRequests(id).requesterAddress;
+        depositToken = tokenRequest.tokenRequests(id).depositToken;
+        depositAmount = tokenRequest.tokenRequests(id).depositAmount;
+        requestAmount = tokenRequest.tokenRequests(id).requestAmount;
+        status = uint256(tokenRequest.tokenRequests(id).status);
     }
 
     /**
