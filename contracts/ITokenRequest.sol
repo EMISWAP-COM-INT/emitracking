@@ -30,4 +30,6 @@ interface ITokenRequest {
         uint256 _requestAmount,
         string memory _reference
     ) external payable returns (uint256);
+
+    function refundTokenRequest(uint256 _tokenRequestId) external;
 }

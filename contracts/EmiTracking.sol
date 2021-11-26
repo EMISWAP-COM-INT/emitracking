@@ -25,10 +25,12 @@ contract EmiTracking is OwnableUpgradeable {
     }
 
     IERC20Upgradeable public stakeToken;
+    IERC20Upgradeable public daoToken;
 
     struct EnterRequestData {
         uint256 stakeAmount;
         uint256 stakeDate;
+        uint256 requestedAmount;
         InStages enterStage;
     }
 
@@ -52,11 +54,13 @@ contract EmiTracking is OwnableUpgradeable {
     function initialize(
         address _owner,
         address _stakeToken,
+        address _daoToken,
         address _tokenRequest
     ) public virtual initializer {
         __Ownable_init();
         transferOwnership(_owner);
         stakeToken = IERC20Upgradeable(_stakeToken);
+        daoToken = IERC20Upgradeable(_daoToken);
         tokenRequest = ITokenRequest(_tokenRequest);
     }
 
@@ -84,6 +88,7 @@ contract EmiTracking is OwnableUpgradeable {
         requestIdData[requestId] = EnterRequestData(
             amount,
             block.timestamp,
+            requestedAmount,
             InStages.PENDING
         );
 
@@ -103,17 +108,19 @@ contract EmiTracking is OwnableUpgradeable {
     /**
     Отдавать во фронт информацию о запросе по его идентификатору. Фронт получает идентификатор либо из списка (см п. 4), либо из события.
      */
-    function getEnterRequestData(uint256 requestId)
+    function getEmiTrackingEnterRequestData(uint256 requestId)
         public
         view
         returns (
             address wallet,
             uint256 amount,
+            uint256 requestedAmount,
             InStages stage
         )
     {
         wallet = requestWallet[requestId];
         amount = requestIdData[requestId].stakeAmount;
+        requestedAmount = requestIdData[requestId].requestedAmount;
         stage = requestIdData[requestId].enterStage;
     }
 
@@ -130,14 +137,14 @@ contract EmiTracking is OwnableUpgradeable {
 
     /**
      * @dev getting enter stake data (struct TokenRequestData) + status (enum Status) by request id
-     * @param id request id 
+     * @param reuqestId request id
      * @return requesterAddress requester address (always this contract)
      * @return depositToken deposite token
      * @return depositAmount deposite token amount
      * @return requestAmount requested token amount
      * @return status int representation of aragons enum Status {Pending, Refunded, Finalised}
      */
-    function getEnterRequest(uint256 id)
+    function getEnterRequest(uint256 reuqestId)
         public
         view
         returns (
@@ -148,11 +155,62 @@ contract EmiTracking is OwnableUpgradeable {
             uint256 status
         )
     {
-        requesterAddress = tokenRequest.tokenRequests(id).requesterAddress;
-        depositToken = tokenRequest.tokenRequests(id).depositToken;
-        depositAmount = tokenRequest.tokenRequests(id).depositAmount;
-        requestAmount = tokenRequest.tokenRequests(id).requestAmount;
-        status = uint256(tokenRequest.tokenRequests(id).status);
+        requesterAddress = tokenRequest
+            .tokenRequests(reuqestId)
+            .requesterAddress;
+        depositToken = tokenRequest.tokenRequests(reuqestId).depositToken;
+        depositAmount = tokenRequest.tokenRequests(reuqestId).depositAmount;
+        requestAmount = tokenRequest.tokenRequests(reuqestId).requestAmount;
+        status = uint256(tokenRequest.tokenRequests(reuqestId).status);
+    }
+
+    /**
+     * @dev claim tokens by requestId,
+     * if request state is "Finalised" -> withdraW FLEX tokens
+     * if request state is "Refunded" -> withdraW USDT tokens
+     */
+    function claim(uint256 requestId) public {
+        (
+            ,
+            ,
+            uint256 depositAmount,
+            uint256 requestAmount,
+            uint256 status
+        ) = getEnterRequest(requestId);
+
+        (
+            address wallet,
+            uint256 amount,
+            uint256 requestedAmount,
+            InStages stage
+        ) = getEmiTrackingEnterRequestData(requestId);
+
+        require(stage == InStages.PENDING, "claime already refunded/finalized");
+        require(
+            depositAmount == amount && requestAmount == requestedAmount,
+            "request states inconsistent"
+        );
+        require(
+            status == uint256(InStages.PENDING) ||
+                status == uint256(InStages.FINALISED),
+            "incorrect request stage"
+        );
+
+        EnterRequestData storage enterRequest = requestIdData[requestId];
+
+
+        // if refunded withdraw USDT and state->FINALISED
+        if (status == uint256(InStages.PENDING)) {
+            tokenRequest.refundTokenRequest(requestId);
+            stakeToken.transfer(wallet, amount);
+            enterRequest.enterStage = InStages.REFUNDED;
+        }
+
+        // if finalized withdraw FLEX and state->FINALISED
+        if (status == uint256(InStages.FINALISED)) {
+            daoToken.transfer(wallet, requestAmount);
+            enterRequest.enterStage = InStages.FINALISED;
+        }
     }
 
     /**
