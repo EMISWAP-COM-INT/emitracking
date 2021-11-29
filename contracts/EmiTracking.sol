@@ -166,8 +166,8 @@ contract EmiTracking is OwnableUpgradeable {
 
     /**
      * @dev claim tokens by requestId,
-     * if request state is "Finalised" -> withdraW FLEX tokens
-     * if request state is "Refunded" -> withdraW USDT tokens
+     * if request state is "FINALISED" -> withdraW FLEX tokens
+     * if request state is "PENDING" -> withdraW USDT tokens
      */
     function claim(uint256 requestId) public {
         (
@@ -198,8 +198,7 @@ contract EmiTracking is OwnableUpgradeable {
 
         EnterRequestData storage enterRequest = requestIdData[requestId];
 
-
-        // if refunded withdraw USDT and state->FINALISED
+        // if PENDING withdraw USDT and state->FINALISED
         if (status == uint256(InStages.PENDING)) {
             tokenRequest.refundTokenRequest(requestId);
             stakeToken.transfer(wallet, amount);
